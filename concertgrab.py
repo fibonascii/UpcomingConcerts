@@ -31,5 +31,17 @@ def get_table_rows(soup):
     
     return concerts
 
+def format_events(concerts):
+    events = {
+     'summary': [],
+     'location': [],
+     }
+
+    for concert in concerts.values():
+        events['location'] = concert[2]
+        events['summary'] = concert[1]
+        print(events)
+ 
 request = make_request('http://concertsdallas.com/')
 rows = get_table_rows(request)
+events = format_events(rows)
