@@ -33,5 +33,3 @@ def get_table_rows(soup):
 
 request = make_request('http://concertsdallas.com/')
 rows = get_table_rows(request)
-for row in rows.values():
-    print(row)
