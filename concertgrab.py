@@ -18,14 +18,13 @@ def get_table_rows(soup):
            'date' : [],
            'venue': []
            }
-    id_number = 0
-    for row in rows:
+    
+    for id_number, row in enumerate(rows):
         cols = row.find_all('td')
         concert['id'].append(id_number)  
         concert['name'].append( cols[0].get_text())
         concert['date'].append( cols[1].get_text())
         concert['venue'].append( cols[2].get_text())
-        id_number += 1
 
     concertTable = pandas.DataFrame( concert )
     concerts = concertTable.set_index('id').T.to_dict('list')
