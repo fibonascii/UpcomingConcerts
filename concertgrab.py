@@ -3,9 +3,8 @@ import requests
 from bs4 import BeautifulSoup
 import pandas
 import re
-from datetime import datetime
-from dateutil.parser import *
-
+from datetime import datetime, timedelta
+import json
 #Import for google calendar api
 import httplib2
 import os
@@ -50,70 +49,38 @@ def make_request(url):
     return soup
 
 def get_table_rows(soup):
-    table = soup.find('table', {'id': 'shTable'})
+    table = soup.find('table', {'id': 'shTable'}).find('tbody')
     rows = table.find_all('tr')
-    
-    concert = {
-           'id' : [],
-           'name' : [],
-           'date' : [],
-           'venue': []
-           }
-    
-    for id_number, row in enumerate(rows):
+   
+    concerts = []
+    for row in rows:
+        event = {
+                 'start': {
+                       'dateTime': None 
+                          },
+                 'end': {
+                       'dateTime': None
+                        }   
+                 }
         cols = row.find_all('td')
         date = cols[1].get_text()
         remove_characters = re.sub('[a-zA-Z]{0,}', '', str(date))
-        format_date = re.sub(r"-([2017]{0,4})([0-9]{0,2}:)", r"-\1 \2", str(remove_characters))        
-      
-        concert['id'].append(id_number) 
-        concert['name'].append( cols[0].get_text())
-        concert['date'].append( format_date)
-        concert['venue'].append( cols[2].get_text())
-
-# This needs to be refactored. At some point the when I'm grabbing the tables rows, the first index is empty. 
-# This section removes that empty list
-
-    concert['id'].pop(0)
-    concert['name'].pop(0)
-    concert['date'].pop(0)
-    concert['venue'].pop(0)
-
-
-
-# This portion loops through the new dictionary of lists and updates the values with a datetime format from string
-# Not all concerts on the website have an announced time so check to see if it does or not
-   
-    for i, date  in enumerate(concert['date']):
-        if ':' not in date:
-            concert['date'][i] = datetime.strptime(date, '%m-%d-%Y')        
+        format_date = re.sub(r"-([2017]{0,4})([0-9]{0,2}:)", r"-\1 \2", str(remove_characters))
+        
+        event['summary'] = cols[0].get_text()
+        event['start']['dateTime'] = format_date 
+        event['location'] = cols[2].get_text()
+        
+        if ':' not in format_date:
+            event['start']['dateTime'] = datetime.strptime(format_date, '%m-%d-%Y')
         else:
-            concert['date'][i] = datetime.strptime(date, '%m-%d-%Y %H:%M ')
+            event['start']['dateTime'] = datetime.strptime(format_date, '%m-%d-%Y %H:%M ')
+        event['end']['dateTime'] = event['start']['dateTime'] + timedelta(hours=4)
+    
+        concerts.append(event) 
 
-    concertTable = pandas.DataFrame( concert )
-    concerts = concertTable.set_index('id').T.to_dict('list')
  
     return concerts
-
-
-def format_events(concerts):
-    events = {
-     'summary': [],
-     'location': [],
-     'start': {
-     'datetime': [] },
-     'end': {
-     'datetime': [] },
-          
-    }
-
-    for concert in concerts.values():
-        events['location'] = concert[2]
-        events['summary'] = concert[1]
-        events['start']['datetime'] = concert[0]
-        events['end']['datetime'] = concert[0]
-
-    return events
 
 def main():
     credentials = get_credentials()
@@ -122,11 +89,14 @@ def main():
 
     request = make_request('http://concertsdallas.com/')
     rows = get_table_rows(request)
-    events = format_events(rows)
-
-    for event in events.values():
-        concert = service.events().insert(calendarId='primary', body=event).execute()
-        print('Event is being created: {}'.format(event['summary']))
+    #events = build_calendar_events(rows)
+  
+    for row in rows:
+        print(row) 
+       
+ #   for event in rows.values():
+ #       print('Event is being created: ')
+ #       concert = service.events().insert(calendarId='primary', body=event).execute()
 
 
 if __name__ == '__main__':
