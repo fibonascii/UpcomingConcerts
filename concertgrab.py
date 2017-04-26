@@ -21,7 +21,7 @@ except ImportError:
 
 SCOPES = 'https://www.googleapis.com/auth/calendar'
 CLIENT_SECRET_FILE = 'client_secret.json'
-APPLICATION_NAME = 'Itzel Google Music Calendar'
+APPLICATION_NAME = 'Google Music Calendar'
 
 def get_credentials():
     home_dir = os.path.expanduser('~')
@@ -56,10 +56,12 @@ def get_table_rows(soup):
     for row in rows:
         event = {
                  'start': {
-                       'dateTime': None 
+                       'dateTime': None,
+                       'timeZone': 'America/Chicago' 
                           },
                  'end': {
-                       'dateTime': None
+                       'dateTime': None,
+                       'timeZone': 'America/Chicago'
                         }   
                  }
         cols = row.find_all('td')
@@ -72,11 +74,12 @@ def get_table_rows(soup):
         event['location'] = cols[2].get_text()
         
         if ':' not in format_date:
-            event['start']['dateTime'] = datetime.strptime(format_date, '%m-%d-%Y')
+            event['start']['dateTime'] = str(datetime.strptime(format_date, '%m-%d-%Y').isoformat())
         else:
-            event['start']['dateTime'] = datetime.strptime(format_date, '%m-%d-%Y %H:%M ')
-        event['end']['dateTime'] = event['start']['dateTime'] + timedelta(hours=4)
-    
+            event['start']['dateTime'] = str(datetime.strptime(format_date, '%m-%d-%Y %H:%M ').isoformat())
+        endtime = datetime.strptime(event['start']['dateTime'],'%Y-%m-%dT%H:%M:%S') + timedelta(hours=4)
+        event['end']['dateTime'] = str(endtime.isoformat())
+        
         concerts.append(event) 
 
  
@@ -89,14 +92,13 @@ def main():
 
     request = make_request('http://concertsdallas.com/')
     rows = get_table_rows(request)
-    #events = build_calendar_events(rows)
-  
+
     for row in rows:
-        print(row) 
-       
- #   for event in rows.values():
- #       print('Event is being created: ')
- #       concert = service.events().insert(calendarId='primary', body=event).execute()
+        jobj = json.dumps(row)
+        event = json.loads(jobj)
+        print('Event is being created: ')
+        print(event)
+        concert = service.events().insert(calendarId='primary', body=event).execute()
 
 
 if __name__ == '__main__':
