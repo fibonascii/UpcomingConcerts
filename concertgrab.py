@@ -4,7 +4,6 @@ from bs4 import BeautifulSoup
 import re
 from datetime import datetime, timedelta
 import json
-#Import for google calendar api
 import httplib2
 import os
 from apiclient import discovery
@@ -66,7 +65,7 @@ def get_table_rows(soup):
         cols = row.find_all('td')
         date = cols[1].get_text()
         remove_characters = re.sub('[a-zA-Z]{0,}', '', str(date))
-        format_date = re.sub(r"-([2017]{0,4})([0-9]{0,2}:)", r"-\1 \2", str(remove_characters))
+        format_date = re.sub(r"-(20[0-9]{0,4})([0-9]{0,2}:)", r"-\1 \2", str(remove_characters))
         
         event['summary'] = cols[0].get_text()
         event['start']['dateTime'] = format_date 
