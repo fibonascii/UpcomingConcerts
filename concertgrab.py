@@ -1,104 +1,104 @@
 from __future__ import print_function
 import requests
 from bs4 import BeautifulSoup
-import re
 from datetime import datetime, timedelta
+import pickle
+import os.path
 import json
-#Import for google calendar api
-import httplib2
-import os
-from apiclient import discovery
-from oauth2client import client
-from oauth2client import tools
-from oauth2client.file import Storage
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+import re
 
-try: 
-    import argparse
-    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
-except ImportError:
-    flags = None
+# If modifying these scopes, delete the file token.pickle.
+SCOPES = ['https://www.googleapis.com/auth/calendar']
 
-SCOPES = 'https://www.googleapis.com/auth/calendar'
-CLIENT_SECRET_FILE = 'client_secret.json'
-APPLICATION_NAME = 'Google Music Calendar'
 
 def get_credentials():
-    home_dir = os.path.expanduser('~')
-    credential_dir = os.path.join(home_dir, '.credentials')
-    if not os.path.exists(credential_dir):
-        os.makedirs(credential_dir)
-    credential_path = os.path.join(credential_dir, 'concert-calendar.jon')
-    
-    store = Storage(credential_path)
-    credentials = store.get()
-    if not credentials or credentials.invalid:
-        flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
-        flow.user_agent = APPLICATION_NAME
-        if flags:
-            credentials = tools.run_flow(flow, store, flags)
-        print("Storing credentials to " + credential_path)
-    
-    return credentials
+    """Authenticate to google calendar api"""
 
-
-def make_request(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'lxml')
-    
-    return soup
-
-def get_table_rows(soup):
-    table = soup.find('table', {'id': 'shTable'}).find('tbody')
-    rows = table.find_all('tr')
-   
-    concerts = []
-    for row in rows:
-        event = {
-                 'start': {
-                       'dateTime': None,
-                       'timeZone': 'America/Chicago' 
-                          },
-                 'end': {
-                       'dateTime': None,
-                       'timeZone': 'America/Chicago'
-                        }   
-                 }
-        cols = row.find_all('td')
-        date = cols[1].get_text()
-        remove_characters = re.sub('[a-zA-Z]{0,}', '', str(date))
-        format_date = re.sub(r"-([2017]{0,4})([0-9]{0,2}:)", r"-\1 \2", str(remove_characters))
-        
-        event['summary'] = cols[0].get_text()
-        event['start']['dateTime'] = format_date 
-        event['location'] = cols[2].get_text()
-        
-        if ':' not in format_date:
-            event['start']['dateTime'] = str(datetime.strptime(format_date, '%m-%d-%Y').isoformat())
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
         else:
-            event['start']['dateTime'] = str(datetime.strptime(format_date, '%m-%d-%Y %H:%M ').isoformat())
-        endtime = datetime.strptime(event['start']['dateTime'],'%Y-%m-%dT%H:%M:%S') + timedelta(hours=4)
-        event['end']['dateTime'] = str(endtime.isoformat())
-        
-        concerts.append(event) 
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server()
+        # Save the credentials for the next run
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
 
- 
-    return concerts
+    return creds
+
+
+def format_datetime(event_date):
+    """formats data given from Concerts and converts it into manageable """
+    remove_day = re.sub(r'[A-Za-z]{0,}', '', event_date)
+    add_space = re.sub(r"([0-9]-[0-9]{0,2}-[0-9]{0,4})([0-9]{0,2}:\d\d)", r"\1 \2", remove_day)
+    formatted_date = datetime.strptime(add_space, '%m-%d-%Y %H:%M ').isoformat()
+
+    return formatted_date
+
+
+def get_events():
+    """Get all the concerts from the event table on concertsdallas.com
+    and store those events in a list of dictionaries"""
+
+    response = requests.get("http://concertsdallas.com")
+    soup = BeautifulSoup(response.text, 'lxml')
+
+    table = soup.find("table", {"id": "shTable"}).find("tbody").find_all("tr")
+
+    event_list = []
+    for event in table:
+        try:
+            event_date = event.find("td", {"class": "shDateCol"}).text
+            start_time = format_datetime(event_date)
+            end_time = datetime.strptime(start_time, '%Y-%m-%dT%H:%M:%S') + timedelta(hours=4)
+            end = end_time.isoformat()
+
+            event_dict = {
+                'summary': event.find("td", {"class": "shEventCol"}).text,
+                'location': event.find("td", {"class": "shVenueCol"}).text,
+                'start': {
+                    'dateTime': format_datetime(event_date),
+                    'timeZone': 'America/Chicago'
+                },
+                'end': {
+                    'dateTime': end,
+                    'timeZone': 'America/Chicago'
+                }
+            }
+
+            event_list.append(event_dict)
+
+        except ValueError:
+            pass
+
+    return event_list
+
 
 def main():
-    credentials = get_credentials()
-    http = credentials.authorize(httplib2.Http())
-    service = discovery.build('calendar', 'v3', http=http)
+    creds = get_credentials()
 
-    request = make_request('http://concertsdallas.com/')
-    rows = get_table_rows(request)
+    service = build('calendar', 'v3', credentials=creds)
+    events = get_events()
 
-    for row in rows:
-        jobj = json.dumps(row)
-        event = json.loads(jobj)
-        print('Event is being created: ')
-        print(event)
-        concert = service.events().insert(calendarId='primary', body=event).execute()
+    for event in events:
+        jobj = json.dumps(event)
+        concert = json.loads(jobj)
+        print("Adding concert to calendar: {}".format(concert))
+        service.events().insert(calendarId='mycalendarId@group.calendar.google.com',
+                                body=concert).execute()
 
 
 if __name__ == '__main__':
-    main() 
+    main()
